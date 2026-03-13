@@ -1,0 +1,5 @@
+[Service]
+ExecStart=/usr/bin/python3 /home/bicoi/rotate_proxy.py
+WorkingDirectory=/home/bicoi
+Restart=always
+User=bicoi

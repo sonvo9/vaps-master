@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <title>VAPS MASTER - SaaS Control v5.0 (NEXUS EDITION)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        .active-tab { border-bottom: 3px solid #3b82f6; color: #3b82f6; }
+        ::-webkit-scrollbar { width: 5px; }
+        ::-webkit-scrollbar-track { background: #0f172a; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
+        .modal-open { overflow: hidden; }
+        .preview-container { width: 100%; height: 100%; border: none; background: white; }
+        .terminal-input { background: #020617; border: 1px solid #1e293b; color: #38bdf8; font-family: monospace; }
+        .terminal-input:focus { border-color: #3b82f6; outline: none; box-shadow: 0 0 10px rgba(59, 130, 246, 0.2); }
+        .deploy-cmd { display: block; background: #020617; padding: 10px 12px; border-radius: 8px; border: 1px solid #1e293b; color: #a78bfa; font-family: monospace; font-size: 11px; cursor: pointer; transition: all 0.3s; margin-top: 4px; }
+        .deploy-cmd:hover { border-color: #8b5cf6; color: #c4b5fd; background: #1e1b4b; }
+        
+        /* Hiệu ứng tia sét kết nối Nexus */
+        .nexus-line {
+            position: absolute;
+            background: linear-gradient(90deg, transparent, #8b5cf6, transparent);
+            height: 2px;
+            width: 100%;
+            top: 50%;
+            z-index: 0;
+            animation: pulse-line 2s infinite;
+        }
+        @keyframes pulse-line {
+            0% { opacity: 0.2; box-shadow: 0 0 0 rgba(139, 92, 246, 0); }
+            50% { opacity: 1; box-shadow: 0 0 20px rgba(139, 92, 246, 0.8); }
+            100% { opacity: 0.2; box-shadow: 0 0 0 rgba(139, 92, 246, 0); }
+        }
+
+        .auth-gradient {
+            background: radial-gradient(circle at center, #1e1b4b 0%, #020617 100%);
+        }
+    </style>
+</head>
+<body class="bg-slate-950 text-white min-h-screen font-sans overflow-x-hidden">
+
+    <!-- MÀN HÌNH ĐĂNG NHẬP (PHÁO ĐÀI BẢO MẬT) -->
+    <div id="auth-screen" class="fixed inset-0 z-[5000] auth-gradient flex items-center justify-center p-6">
+        <div class="max-w-md w-full bg-slate-900/50 backdrop-blur-xl border border-slate-800 p-10 rounded-[3rem] shadow-2xl relative overflow-hidden">
+            <div class="absolute -top-24 -left-24 w-48 h-48 bg-blue-600/20 rounded-full blur-3xl"></div>
+            <div class="absolute -bottom-24 -right-24 w-48 h-48 bg-purple-600/20 rounded-full blur-3xl"></div>
+            
+            <div class="relative z-10 text-center space-y-8">
+                <div class="w-20 h-20 bg-gradient-to-br from-blue-600 to-indigo-800 rounded-3xl flex items-center justify-center shadow-lg shadow-blue-500/20 mx-auto transform -rotate-12">
+                    <i class="fas fa-shield-alt text-4xl text-white"></i>
+                </div>
+                <div>
+                    <h2 class="text-2xl font-black uppercase italic tracking-tighter text-white">VAPS Master Fortress</h2>
+                    <p class="text-slate-400 text-xs font-bold uppercase tracking-widest mt-2">Xác thực quyền hạn chỉ huy</p>
+                </div>
+
+                <div class="space-y-4">
+                    <div class="relative">
+                        <i class="fas fa-at absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 text-sm"></i>
+                        <input type="email" id="login-email" placeholder="Master Key (Email)" class="w-full bg-slate-950/80 border border-slate-800 p-4 pl-12 rounded-2xl outline-none text-sm font-bold focus:border-blue-500 transition-all">
+                    </div>
+                    <div class="relative">
+                        <i class="fas fa-lock absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 text-sm"></i>
+                        <input type="password" id="login-password" placeholder="Access Code" class="w-full bg-slate-950/80 border border-slate-800 p-4 pl-12 rounded-2xl outline-none text-sm font-bold focus:border-blue-500 transition-all">
+                    </div>
+                    <button onclick="window.masterLogin()" id="btn-master-login" class="w-full bg-blue-600 hover:bg-blue-500 py-4 rounded-2xl font-black uppercase tracking-widest shadow-xl transition-all flex items-center justify-center gap-2 group">
+                        <span id="login-text">Kích hoạt quyền chỉ huy</span>
+                        <i class="fas fa-arrow-right group-hover:translate-x-1 transition-transform"></i>
+                    </button>
+                    <p id="auth-error" class="text-red-400 text-[10px] font-bold hidden uppercase tracking-wider text-center"></p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- GIAO DIỆN CHỈ HUY (CHỈ HIỆN KHI ĐÃ LOGGED IN) -->
+    <div id="master-dashboard" class="max-w-7xl mx-auto space-y-10 p-6 md:p-12 hidden">
+        <!-- HEADER NAV -->
+        <div class="flex justify-between items-center bg-slate-900 p-8 rounded-[3rem] border border-slate-800 shadow-2xl relative overflow-hidden">
+            <div class="absolute -right-20 -top-20 w-64 h-64 bg-blue-600/10 rounded-full blur-3xl pointer-events-none"></div>
+            
+            <div class="flex items-center gap-4 relative z-10">
+                <div class="w-14 h-14 bg-gradient-to-br from-blue-600 to-indigo-800 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-500/20">
+                    <i class="fas fa-microchip text-2xl"></i>
+                </div>
+                <div>
+                    <h1 class="text-2xl font-black uppercase italic tracking-wider bg-clip-text text-transparent bg-gradient-to-r from-white to-slate-400">VAPS MASTER</h1>
+                    <nav class="flex gap-6 mt-1">
+                        <button onclick="window.switchTab('shops')" id="tab-shops" class="text-[10px] font-bold text-blue-500 border-b border-blue-500 uppercase tracking-widest transition-all">Cửa hàng</button>
+                        <button onclick="window.switchTab('themes')" id="tab-themes" class="text-[10px] font-bold text-slate-500 hover:text-white uppercase tracking-widest transition-all">Thư viện Theme</button>
+                        <button onclick="window.switchTab('ai')" id="tab-ai" class="text-[10px] font-bold text-slate-500 hover:text-yellow-400 uppercase tracking-widest transition-all"><i class="fas fa-terminal mr-1"></i> AI CLI</button>
+                        <button onclick="window.switchTab('nexus')" id="tab-nexus" class="text-[10px] font-bold text-slate-500 hover:text-purple-400 uppercase tracking-widest transition-all flex items-center gap-1">
+                            <i class="fas fa-project-diagram text-purple-500"></i> Nexus Liên Minh</button>
+                        <button onclick="window.switchTab('marketplace')" id="tab-marketplace" class="text-[10px] font-bold text-slate-500 hover:text-orange-400 uppercase tracking-widest transition-all flex items-center gap-1">
+                            <i class="fas fa-globe-asia text-orange-500"></i> VAPS Hub (Sàn)</button>
+                        <button onclick="window.switchTab('tools')" id="tab-tools" class="text-[10px] font-bold text-slate-500 hover:text-pink-400 uppercase tracking-widest transition-all flex items-center gap-1">
+                            <i class="fas fa-spider text-pink-500"></i> Tiện Ích</button>
+                    </nav>
+                </div>
+            </div>
+            <div class="flex items-center gap-4 z-10">
+                <span id="user-display" class="text-[10px] text-slate-400 font-mono hidden md:block">MASTER: ...</span>
+                <button onclick="window.masterLogout()" class="bg-red-500/10 text-red-500 px-6 py-2 rounded-full text-xs font-black uppercase hover:bg-red-500 hover:text-white transition-all">Đăng xuất</button>
+            </div>
+        </div>
+
+        <!-- VIEW: QUẢN LÝ SHOP -->
+        <div id="view-shops" class="flex flex-col gap-8 fade-in">
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                <!-- Form cấp phát Shop -->
+                <div class="lg:col-span-4 bg-slate-900 p-8 rounded-[3rem] border border-slate-800 shadow-xl space-y-6">
+                    <h2 id="form-shop-title" class="text-lg font-black uppercase italic border-l-4 border-blue-500 pl-4 transition-colors">Cấp phát Shop mới</h2>
+                    <div class="space-y-4">
+                        <input type="hidden" id="editShopId" value="">
+                        <input type="text" id="shopName" placeholder="Tên Shop (VD: Giày Thể Thao)" class="w-full bg-slate-950 p-4 rounded-2xl border border-slate-800 outline-none text-sm font-bold">
+                        <input type="text" id="shopDomain" placeholder="Domain (.web.app)" class="w-full bg-slate-950 p-4 rounded-2xl border border-slate-800 outline-none text-sm font-bold text-blue-400">
+                        <div class="grid grid-cols-2 gap-4">
+                            <input type="email" id="shopEmail" placeholder="Email Admin" class="w-full bg-slate-950 p-4 rounded-2xl border border-slate-800 outline-none text-xs font-bold text-emerald-400">
+                            <input type="text" id="shopPassword" placeholder="Mật khẩu" class="w-full bg-slate-950 p-4 rounded-2xl border border-slate-800 outline-none text-xs font-bold text-emerald-400">
+                        </div>
+                        <div class="space-y-1">
+                            <label class="text-[9px] text-blue-500 uppercase font-black pl-2">Luồng Multi-site (Target)</label>
+                            <select id="deployTargetSelect" class="w-full bg-slate-950 p-4 rounded-xl border border-slate-800 outline-none text-sm font-bold text-white">
+                                <option value="client-site">client-site (Thư mục: public)</option>
+                                <option value="affiliate">affiliate (Thư mục: public_theme_affiliate)</option>
+                                <option value="ao">ao (Thư mục: public_theme_ao)</option>
+                                <option value="ecom_pro">ecom_pro (Thư mục: public_theme_ecom_pro)</option>
+                                <option value="ecom_store">ecom_store (Thư mục: public_theme_ecom_store)</option>
+                                <option value="giay">giay (Thư mục: public_theme_giay)</option>
+                                <option value="hoa">hoa (Thư mục: public_theme_hoa)</option>
+                                <option value="nha_hang_khach_san">nha_hang_khach_san (Thư mục: public_theme_nha_hang_khach_san)</option>
+                                <option value="noi_that">noi_that (Thư mục: public_theme_noi_that)</option>
+                            </select>
+                        </div>
+                        <div class="flex gap-3">
+                            <button id="btn-save-shop" onclick="window.saveShop()" class="flex-1 bg-blue-600 hover:bg-blue-700 py-4 rounded-2xl font-black uppercase tracking-widest shadow-xl transition-all">Lưu Shop</button>
+                            <button id="btn-cancel-edit" onclick="window.cancelEditShop()" class="hidden bg-slate-800 hover:bg-slate-700 text-slate-300 py-4 px-6 rounded-2xl font-black uppercase transition-all">Hủy</button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Danh sách Shop -->
+                <div class="lg:col-span-8 bg-slate-900 p-8 rounded-[3rem] border border-slate-800 shadow-xl overflow-x-auto">
+                    <table class="w-full text-left min-w-[600px]">
+                        <thead class="text-[10px] text-slate-500 uppercase tracking-widest border-b border-slate-800">
+                            <tr>
+                                <th class="pb-4">Shop / Domain</th>
+                                <th class="pb-4">Admin Email</th>
+                                <th class="pb-4">Target (Luồng Web)</th>
+                                <th class="pb-4 text-right">Tia sét (AMP)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="shop-list" class="divide-y divide-slate-800/50"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- VIEW: THƯ VIỆN THEME -->
+        <div id="view-themes" class="hidden space-y-8 fade-in">
+            <div class="bg-slate-900 p-10 rounded-[3rem] border border-slate-800 shadow-xl">
+                <div class="flex justify-between items-center mb-8">
+                    <h2 class="text-xl font-black uppercase italic text-white">Thư viện Giao diện</h2>
+                    <button onclick="window.createNewTheme()" class="bg-emerald-600 text-white px-6 py-3 rounded-2xl text-[10px] font-black uppercase"><i class="fas fa-plus mr-2"></i> Thêm Theme Mới</button>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" id="themes-grid"></div>
+            </div>
+        </div>
+
+        <!-- VIEW: TRẠM LỆNH AI -->
+        <div id="view-ai" class="hidden flex flex-col h-[70vh] bg-slate-900 rounded-[3rem] border border-slate-800 shadow-xl overflow-hidden relative fade-in">
+            <div class="bg-slate-950 p-6 border-b border-slate-800 flex items-center justify-between z-10 shadow-lg shrink-0">
+                <div class="flex items-center gap-4">
+                    <i class="fas fa-terminal text-yellow-500 text-xl"></i>
+                    <h2 class="text-lg font-black uppercase tracking-widest text-white">Trạm Lệnh AI - Google Cloud</h2>
+                </div>
+                <div class="flex gap-2">
+                    <span class="w-3 h-3 rounded-full bg-red-500"></span>
+                    <span class="w-3 h-3 rounded-full bg-yellow-500"></span>
+                    <span class="w-3 h-3 rounded-full bg-green-500"></span>
+                </div>
+            </div>
+
+            <div class="bg-slate-900 border-b border-slate-800 z-10 flex-shrink-0 flex flex-col">
+                <div class="border-b border-slate-800/50">
+                    <button onclick="document.getElementById('deploy-commands-panel').classList.toggle('hidden'); this.querySelector('.fa-chevron-down').classList.toggle('rotate-180');" class="w-full flex justify-between items-center p-4 hover:bg-slate-800 transition-colors text-slate-300 outline-none">
+                        <span class="text-[10px] font-black uppercase tracking-widest text-emerald-400 flex items-center gap-2"><i class="fas fa-rocket text-sm"></i> Bảng Lệnh Deploy (Multi-site)</span>
+                        <i class="fas fa-chevron-down text-xs transition-transform duration-300"></i>
+                    </button>
+                    
+                    <div id="deploy-commands-panel" class="hidden p-6 bg-slate-950/80 border-t border-slate-800 max-h-[30vh] overflow-y-auto">
+                        <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+                            <div class="space-y-1">
+                                <label class="text-[9px] text-slate-500 font-black uppercase px-1" title="admin_master">Lõi Master</label>
+                                <code class="deploy-cmd" title="Click to copy" onclick="window.copyToClipboard('firebase deploy --only hosting:admin_master')">hosting:admin_master</code>
+                            </div>
+                            <div class="space-y-1">
+                                <label class="text-[9px] text-slate-500 font-black uppercase px-1" title="public">Luồng Client Site</label>
+                                <code class="deploy-cmd" title="Click to copy" onclick="window.copyToClipboard('firebase deploy --only hosting:client-site')">hosting:client-site</code>
+                            </div>
+                            <div class="space-y-1">
+                                <label class="text-[9px] text-slate-500 font-black uppercase px-1" title="public_theme_affiliate">Affiliate</label>
+                                <code class="deploy-cmd" title="Click to copy" onclick="window.copyToClipboard('firebase deploy --only hosting:affiliate')">hosting:affiliate</code>
+                            </div>
+                            <div class="space-y-1">
+                                <label class="text-[9px] text-slate-500 font-black uppercase px-1" title="public_theme_ao">Shop Áo</label>
+                                <code class="deploy-cmd" title="Click to copy" onclick="window.copyToClipboard('firebase deploy --only hosting:ao')">hosting:ao</code>
+                            </div>
+                            <div class="space-y-1">
+                                <label class="text-[9px] text-slate-500 font-black uppercase px-1" title="public_theme_ecom_pro">Ecom Pro</label>
+                                <code class="deploy-cmd" title="Click to copy" onclick="window.copyToClipboard('firebase deploy --only hosting:ecom_pro')">hosting:ecom_pro</code>
+                            </div>
+                            <div class="space-y-1">
+                                <label class="text-[9px] text-slate-500 font-black uppercase px-1" title="public_theme_ecom_store">Ecom Store</label>
+                                <code class="deploy-cmd" title="Click to copy" onclick="window.copyToClipboard('firebase deploy --only hosting:ecom_store')">hosting:ecom_store</code>
+                            </div>
+                            <div class="space-y-1">
+                                <label class="text-[9px] text-slate-500 font-black uppercase px-1" title="public_theme_giay">Shop Giày</label>
+                                <code class="deploy-cmd" title="Click to copy" onclick="window.copyToClipboard('firebase deploy --only hosting:giay')">hosting:giay</code>
+                            </div>
+                            <div class="space-y-1">
+                                <label class="text-[9px] text-slate-500 font-black uppercase px-1" title="public_theme_hoa">Shop Hoa</label>
+                                <code class="deploy-cmd" title="Click to copy" onclick="window.copyToClipboard('firebase deploy --only hosting:hoa')">hosting:hoa</code>
+                            </div>
+                            <div class="space-y-1">
+                                <label class="text-[9px] text-slate-500 font-black uppercase px-1" title="public_theme_nha_hang_khach_san">Nhà Hàng / KS</label>
+                                <code class="deploy-cmd" title="Click to copy" onclick="window.copyToClipboard('firebase deploy --only hosting:nha_hang_khach_san')">hosting:nha_hang_khach_san</code>
+                            </div>
+                            <div class="space-y-1">
+                                <label class="text-[9px] text-slate-500 font-black uppercase px-1" title="public_theme_noi_that">Nội Thất</label>
+                                <code class="deploy-cmd" title="Click to copy" onclick="window.copyToClipboard('firebase deploy --only hosting:noi_that')">hosting:noi_that</code>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div>
+                    <button onclick="document.getElementById('marketing-commands-panel').classList.toggle('hidden'); this.querySelector('.fa-chevron-down').classList.toggle('rotate-180');" class="w-full flex justify-between items-center p-4 hover:bg-slate-800 transition-colors text-slate-300 outline-none">
+                        <span class="text-[10px] font-black uppercase tracking-widest text-yellow-400 flex items-center gap-2"><i class="fas fa-bolt text-sm"></i> Lệnh Vận Hành (SEO, Ads, Đồng Bộ Kênh)</span>
+                        <i class="fas fa-chevron-down text-xs transition-transform duration-300"></i>
+                    </button>
+                    
+                    <div id="marketing-commands-panel" class="hidden p-6 bg-slate-950/80 border-t border-slate-800 max-h-[30vh] overflow-y-auto">
+                        <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                            <div class="space-y-1">
+                                <label class="text-[9px] text-slate-500 font-black uppercase px-1">Tối Ưu Tốc Độ Nano</label>
+                                <code class="deploy-cmd" style="color: #fde047; border-color: rgba(253, 224, 71, 0.3);" title="Click to copy" onclick="window.copyToClipboard('run:nano-optimize --all')">run:nano-optimize</code>
+                            </div>
+                            <div class="space-y-1">
+                                <label class="text-[9px] text-slate-500 font-black uppercase px-1">Phân Tích SEO Web</label>
+                                <code class="deploy-cmd" style="color: #fde047; border-color: rgba(253, 224, 71, 0.3);" title="Click to copy" onclick="window.copyToClipboard('ai:seo-audit --fix')">ai:seo-audit</code>
+                            </div>
+                            <div class="space-y-1">
+                                <label class="text-[9px] text-slate-500 font-black uppercase px-1">Tạo Ads Content (FB/GG)</label>
+                                <code class="deploy-cmd" style="color: #fde047; border-color: rgba(253, 224, 71, 0.3);" title="Click to copy" onclick="window.copyToClipboard('ai:generate-ads --platform=all')">ai:generate-ads</code>
+                            </div>
+                            <div class="space-y-1">
+                                <label class="text-[9px] text-slate-500 font-black uppercase px-1">Kết Nối Facebook Pixel</label>
+                                <code class="deploy-cmd" style="color: #60a5fa; border-color: rgba(96, 165, 250, 0.3);" title="Click to copy" onclick="window.copyToClipboard('sync:connect-fb-pixel')">sync:connect-fb-pixel</code>
+                            </div>
+                            <div class="space-y-1">
+                                <label class="text-[9px] text-slate-500 font-black uppercase px-1">Kết Nối Google Merchant</label>
+                                <code class="deploy-cmd" style="color: #60a5fa; border-color: rgba(96, 165, 250, 0.3);" title="Click to copy" onclick="window.copyToClipboard('sync:connect-gmc')">sync:connect-gmc</code>
+                            </div>
+                            <div class="space-y-1">
+                                <label class="text-[9px] text-slate-500 font-black uppercase px-1">Đồng Bộ Sàn (Shopee/Tiktok)</label>
+                                <code class="deploy-cmd" style="color: #60a5fa; border-color: rgba(96, 165, 250, 0.3);" title="Click to copy" onclick="window.copyToClipboard('sync:connect-ecommerce')">sync:connect-ecommerce</code>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="ai-chat-history" class="flex-1 p-6 overflow-y-auto space-y-4 font-mono text-sm bg-[#050B14] scroll-smooth">
+                <div class="text-green-400 font-bold">> VAPS SYSTEM INITIALIZED...</div>
+                <div class="text-green-400 font-bold">> GOOGLE GEMINI NEURAL NET CONNECTED.</div>
+                <div class="text-green-400 font-bold">> READY FOR COMMANDS.</div>
+            </div>
+
+            <div class="p-4 bg-slate-950 border-t border-slate-800 shrink-0">
+                <form id="ai-form" onsubmit="window.sendAiCommand(event)" class="flex gap-4 items-center">
+                    <span class="text-yellow-500 font-black flex items-center text-xl pl-2">>_</span>
+                    <input type="text" id="ai-input" class="flex-1 terminal-input p-4 rounded-xl text-sm outline-none transition-all" placeholder="Dán lệnh copy ở trên vào đây hoặc nhập lệnh mới..." autocomplete="off">
+                    <button type="submit" class="bg-blue-600 hover:bg-blue-500 text-white px-8 py-4 rounded-xl font-black uppercase tracking-widest transition-all shadow-[0_0_15px_rgba(37,99,235,0.4)]">
+                        <i class="fas fa-paper-plane"></i> Thực Thi
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <!-- VIEW: NEXUS LIÊN MINH -->
+        <div id="view-nexus" class="hidden space-y-8 fade-in">
+            <div class="bg-slate-900 p-10 rounded-[3rem] border border-purple-900/50 shadow-[0_0_50px_rgba(88,28,135,0.2)] relative overflow-hidden">
+                <div class="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-5"></div>
+                <div class="absolute -left-32 -top-32 w-96 h-96 bg-purple-600/20 rounded-full blur-[100px] pointer-events-none"></div>
+
+                <div class="flex flex-col md:flex-row justify-between items-center mb-10 relative z-10 gap-6">
+                    <div>
+                        <h2 class="text-2xl font-black uppercase italic text-white flex items-center gap-3">
+                            <i class="fas fa-network-wired text-purple-500"></i> VAPS Nexus <span class="bg-purple-600 text-white text-[10px] px-3 py-1 rounded-full not-italic">Tự động chéo hóa</span>
+                        </h2>
+                        <p class="text-slate-400 mt-2 text-sm max-w-xl">Hệ thống AI tự động phân tích tệp khách hàng và sản phẩm của các Tenant để ghép cặp bán chéo (Cross-sell).</p>
+                    </div>
+                    <button onclick="window.runNexusMatch()" class="bg-gradient-to-r from-purple-600 to-indigo-600 text-white px-8 py-4 rounded-2xl text-xs font-black uppercase shadow-[0_0_20px_rgba(147,51,234,0.4)] hover:shadow-[0_0_30px_rgba(147,51,234,0.6)] transition-all flex items-center gap-2 transform hover:scale-105">
+                        <i class="fas fa-magic"></i> Kích hoạt AI Dò Tìm Chéo
+                    </button>
+                </div>
+
+                <div id="nexus-connections" class="grid grid-cols-1 md:grid-cols-2 gap-8 relative z-10">
+                    <div class="col-span-full text-center py-12 text-slate-500 border-2 border-dashed border-slate-800 rounded-3xl">
+                        <i class="fas fa-satellite-dish text-4xl mb-4 text-slate-600"></i>
+                        <p>Hệ thống AI đang chờ lệnh để rà soát toàn bộ sản phẩm trên các cửa hàng...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- VIEW: VAPS HUB -->
+        <div id="view-marketplace" class="hidden space-y-8 fade-in">
+            <div class="bg-slate-900 p-10 rounded-[3rem] border border-orange-900/50 shadow-[0_0_50px_rgba(249,115,22,0.15)] relative overflow-hidden">
+                <div class="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-20"></div>
+                <div class="absolute -right-32 -bottom-32 w-96 h-96 bg-orange-600/10 rounded-full blur-[100px] pointer-events-none"></div>
+
+                <div class="relative z-10 mb-10 text-center max-w-2xl mx-auto">
+                    <h2 class="text-3xl font-black uppercase italic text-white flex items-center justify-center gap-3 mb-4">
+                        <i class="fas fa-layer-group text-orange-500"></i> VAPS HUB <span class="text-orange-500">MARKETPLACE</span>
+                    </h2>
+                    <p class="text-slate-400 text-sm leading-relaxed">Sàn tổng hợp hiển thị toàn bộ sản phẩm từ tất cả các cửa hàng độc lập trong hệ sinh thái.</p>
+                    
+                    <div class="mt-6 flex justify-center">
+                        <div class="bg-slate-950 border border-slate-800 rounded-full p-2 flex w-full max-w-md shadow-inner">
+                            <input type="text" placeholder="Tìm kiếm sản phẩm trên toàn Sàn..." class="bg-transparent text-white text-sm outline-none px-4 flex-1">
+                            <button class="bg-orange-500 hover:bg-orange-600 text-white rounded-full w-10 h-10 flex items-center justify-center transition-colors">
+                                <i class="fas fa-search"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="hub-product-grid" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-6 relative z-10">
+                    <div class="col-span-full text-center py-20 text-slate-500">
+                        <i class="fas fa-globe text-6xl mb-4 text-slate-800"></i>
+                        <p>Đang chờ khởi tạo liên kết dữ liệu đa nguồn...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TIỆN ÍCH ADMIN (CRAWLER TOOL) -->
+        <div id="view-tools" class="hidden space-y-8 fade-in">
+            <div class="bg-slate-900 p-10 rounded-[3rem] border border-pink-900/50 shadow-[0_0_50px_rgba(236,72,153,0.15)] relative overflow-hidden">
+                <div class="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-20"></div>
+                <div class="absolute -right-32 -bottom-32 w-96 h-96 bg-pink-600/10 rounded-full blur-[100px] pointer-events-none"></div>
+
+                <div class="relative z-10 mb-10 max-w-3xl mx-auto text-center">
+                    <h2 class="text-3xl font-black uppercase italic text-white flex items-center justify-center gap-3 mb-4">
+                        <i class="fas fa-spider text-pink-500"></i> VAPS CRAWLER <span class="text-pink-500">TOOL</span>
+                    </h2>
+                    <p class="text-slate-400 text-sm leading-relaxed">Công cụ quét và bóc tách hình ảnh sản phẩm sạch từ website bất kỳ.</p>
+                    
+                    <div class="mt-8 flex flex-col items-center gap-4">
+                        <div class="bg-slate-950 border border-slate-800 rounded-full p-2 flex w-full shadow-inner">
+                            <input type="text" id="scanUrlInput" placeholder="Nhập tên miền (vd: https://armaniexchange.in/...)" class="bg-transparent text-white text-sm outline-none px-6 flex-1">
+                            <button id="btn-scan" onclick="window.startScan()" class="bg-pink-600 hover:bg-pink-500 text-white rounded-full px-8 py-3 font-black uppercase tracking-widest text-xs transition-colors shadow-[0_0_15px_rgba(236,72,153,0.4)] flex items-center gap-2">
+                                <i class="fas fa-search"></i> Quét Ảnh
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="relative z-10 bg-slate-950 rounded-3xl p-6 border border-slate-800 min-h-[300px]">
+                    <div id="scan-status" class="text-center text-slate-500 py-10">
+                        <i class="fas fa-image text-5xl mb-4 text-slate-800"></i>
+                        <p>Kết quả hình ảnh bóc tách sẽ hiển thị tại đây...</p>
+                    </div>
+                    <div id="scan-result-grid" class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 hidden"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL EDITOR THEME -->
+    <div id="editor-modal" class="fixed inset-0 bg-black/95 z-[6000] hidden flex flex-col p-6">
+        <div class="flex justify-between items-center mb-4">
+            <h3 class="text-lg font-black uppercase italic text-emerald-400">Biên tập mã nguồn Theme</h3>
+            <div class="flex gap-4">
+                <button onclick="window.closeEditor()" class="text-slate-400 uppercase text-xs font-bold px-4 py-2 hover:text-white">Đóng</button>
+                <button onclick="window.saveThemeCode()" class="bg-blue-600 text-white px-8 py-2 rounded-xl text-xs font-black uppercase shadow-lg shadow-blue-900/50">Cập nhật Theme</button>
+            </div>
+        </div>
+        <input type="text" id="theme-name-editor" class="w-full bg-slate-800 border border-slate-700 p-4 rounded-xl text-white font-bold mb-4 outline-none" placeholder="Tên Theme...">
+        <textarea id="html-editor" class="flex-grow w-full bg-slate-900 text-blue-300 font-mono p-8 rounded-3xl border border-slate-800 outline-none leading-relaxed text-sm" placeholder="Paste HTML code here..."></textarea>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
+        import { getFirestore, doc, setDoc, deleteDoc, collection, onSnapshot, updateDoc, getDocs, getDoc, query, where, addDoc } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
+        import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
+
+        // Firebase Config
+        const config = {
+            apiKey: "AIzaSyBBi2Jq8Mu5Pkj9Lox6mCivgLFKiJaccHU",
+            authDomain: "mamayducweb.firebaseapp.com",
+            projectId: "mamayducweb",
+            storageBucket: "mamayducweb.firebasestorage.app"
+        };
+        const appId = "mamayducweb-saas-v1";
+
+        const app = initializeApp(config);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+
+        let themesCache = {};
+        let tenantsCache = [];
+        let currentThemeId = null;
+
+        // --- PHÁO ĐÀI MẬT KHẨU (AUTH LOGIC) ---
+        window.masterLogin = async () => {
+            const email = document.getElementById('login-email').value;
+            const pass = document.getElementById('login-password').value;
+            const btn = document.getElementById('btn-master-login');
+            const errEl = document.getElementById('auth-error');
+
+            if(!email || !pass) return;
+
+            btn.disabled = true;
+            document.getElementById('login-text').innerText = "ĐANG GIẢI MÃ...";
+            errEl.classList.add('hidden');
+
+            try {
+                await signInWithEmailAndPassword(auth, email, pass);
+            } catch (error) {
+                errEl.innerText = "MASTER KEY HOẶC ACCESS CODE SAI!";
+                errEl.classList.remove('hidden');
+                btn.disabled = false;
+                document.getElementById('login-text').innerText = "Kích hoạt quyền chỉ huy";
+            }
+        };
+
+        window.masterLogout = () => {
+            signOut(auth);
+        };
+
+        onAuthStateChanged(auth, (user) => {
+            const authScreen = document.getElementById('auth-screen');
+            const dashboard = document.getElementById('master-dashboard');
+            
+            if (user) {
+                // Kiểm tra xem có phải là Master Admin không (Bác có thể thêm flag trong Firestore nếu cần)
+                // Ở đây ta cho phép bất kỳ ai login thành công vào xem Dashboard (Tạm thời)
+                authScreen.classList.add('hidden');
+                dashboard.classList.remove('hidden');
+                document.getElementById('user-display').innerText = `MASTER: ${user.email}`;
+                initMasterData();
+            } else {
+                authScreen.classList.remove('hidden');
+                dashboard.classList.add('hidden');
+                document.getElementById('btn-master-login').disabled = false;
+                document.getElementById('login-text').innerText = "Kích hoạt quyền chỉ huy";
+            }
+        });
+
+        // --- HÀM KHỞI TẠO DỮ LIỆU ---
+        function initMasterData() {
+            // Đồng bộ Themes
+            onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'Themes'), (snap) => {
+                const grid = document.getElementById('themes-grid');
+                if (grid) grid.innerHTML = "";
+                themesCache = {};
+                snap.forEach(d => {
+                    const theme = d.data();
+                    themesCache[d.id] = theme;
+                    grid.innerHTML += `
+                        <div class="bg-slate-950 p-6 rounded-[2rem] border border-slate-800 hover:border-blue-500 transition-all group">
+                            <h4 class="font-black text-sm uppercase italic text-white">${theme.name}</h4>
+                            <p class="text-[9px] text-slate-500 mt-1">ID: ${d.id}</p>
+                            <div class="flex gap-2 mt-6">
+                                <button onclick="window.openEditor('${d.id}')" class="flex-1 bg-blue-600/10 text-blue-500 hover:bg-blue-600 hover:text-white py-2.5 rounded-xl text-[10px] font-black uppercase">Sửa Code</button>
+                                <button onclick="window.deleteTheme('${d.id}')" class="w-10 bg-red-600/10 text-red-500 hover:bg-red-600 hover:text-white rounded-xl transition-all"><i class="fas fa-trash-alt text-xs"></i></button>
+                            </div>
+                        </div>`;
+                });
+            });
+
+            // Đồng bộ Shop
+            onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'Tenants'), (snap) => {
+                tenantsCache = [];
+                const list = document.getElementById('shop-list');
+                if (list) list.innerHTML = "";
+                snap.forEach(d => {
+                    const shop = {id: d.id, ...d.data()};
+                    tenantsCache.push(shop);
+                    list.innerHTML += `
+                        <tr class="border-b border-slate-800/50 hover:bg-slate-900/50 transition-all">
+                            <td class="py-4"><b>${shop.ten_chu_shop}</b><br><small class="text-blue-500">${shop.domain}</small></td>
+                            <td class="py-4 text-xs text-slate-400">${shop.owner_email}</td>
+                            <td class="py-4"><span class="bg-blue-900/30 text-blue-400 px-3 py-1 rounded text-[10px] font-bold">Target: ${shop.deploy_target || 'client-site'}</span></td>
+                            <td class="text-right py-4 space-x-1">
+                                <button onclick="window.deployAMP(event, '${shop.id}')" class="text-yellow-500 bg-yellow-500/10 p-3 rounded-xl"><i class="fas fa-bolt"></i></button>
+                                <button onclick="window.editShop('${shop.id}')" class="text-blue-500 bg-blue-500/10 p-3 rounded-xl"><i class="fas fa-edit"></i></button>
+                            </td>
+                        </tr>`;
+                });
+            });
+        }
+
+        // --- CÁC HÀM UI ---
+        window.switchTab = (tab) => {
+            ['shops', 'themes', 'ai', 'nexus', 'marketplace', 'tools'].forEach(id => {
+                document.getElementById('view-' + id).classList.add('hidden');
+                const btn = document.getElementById('tab-' + id);
+                btn.classList.remove('text-blue-500', 'text-yellow-400', 'text-purple-400', 'text-orange-400', 'text-pink-400', 'border-b', 'border-blue-500');
+                btn.classList.add('text-slate-500');
+            });
+            document.getElementById('view-' + tab).classList.remove('hidden');
+            const activeBtn = document.getElementById('tab-' + tab);
+            activeBtn.classList.remove('text-slate-500');
+            activeBtn.classList.add('border-b', 'border-blue-500', 'text-blue-500');
+        };
+
+        window.copyToClipboard = (text) => {
+            navigator.clipboard.writeText(text).then(() => {
+                const toast = document.createElement('div');
+                toast.className = 'fixed bottom-4 right-4 bg-emerald-500 text-white px-6 py-3 rounded-xl text-sm font-bold shadow-2xl z-[7000]';
+                toast.innerText = 'Đã Copy lệnh thành công!';
+                document.body.appendChild(toast);
+                setTimeout(() => toast.remove(), 2000);
+            });
+        };
+
+        // --- CÁC HÀM XỬ LÝ DỮ LIỆU (SHOP/THEME) ---
+        window.saveShop = async () => {
+            const id = document.getElementById('editShopId').value;
+            const payload = {
+                ten_chu_shop: document.getElementById('shopName').value,
+                domain: document.getElementById('shopDomain').value,
+                owner_email: document.getElementById('shopEmail').value,
+                deploy_target: document.getElementById('deployTargetSelect').value
+            };
+            try {
+                if(id) await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'Tenants', id), payload);
+                else await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'Tenants'), payload);
+                window.cancelEditShop();
+            } catch(e) { alert(e.message); }
+        };
+
+        window.editShop = (id) => {
+            const shop = tenantsCache.find(t => t.id === id);
+            document.getElementById('editShopId').value = id;
+            document.getElementById('shopName').value = shop.ten_chu_shop;
+            document.getElementById('shopDomain').value = shop.domain;
+            document.getElementById('shopEmail').value = shop.owner_email;
+            document.getElementById('deployTargetSelect').value = shop.deploy_target || 'client-site';
+            document.getElementById('btn-cancel-edit').classList.remove('hidden');
+        };
+
+        window.cancelEditShop = () => {
+            document.getElementById('editShopId').value = '';
+            document.getElementById('shopName').value = '';
+            document.getElementById('shopDomain').value = '';
+            document.getElementById('shopEmail').value = '';
+            document.getElementById('btn-cancel-edit').classList.add('hidden');
+        };
+
+        // --- TRẠM LỆNH AI CLI ---
+        window.sendAiCommand = async (e) => {
+            e.preventDefault();
+            const cmd = document.getElementById('ai-input').value;
+            if(!cmd) return;
+            
+            const history = document.getElementById('ai-chat-history');
+            history.innerHTML += `<div class="text-blue-400 font-bold mt-4">> root@vaps-master:~$ ${cmd}</div>`;
+            document.getElementById('ai-input').value = '';
+            
+            try {
+                const res = await fetch('https://9999-cs-e0a75faf-bc18-497b-bcfa-e5346e789b75.cs-asia-southeast1-bool.cloudshell.dev/run-command', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ command: cmd })
+                });
+                const data = await res.json();
+                if(data.stdout) history.innerHTML += `<div class="text-green-400 text-xs mt-2">${data.stdout.replace(/\n/g, '<br>')}</div>`;
+                if(data.stderr) history.innerHTML += `<div class="text-red-400 text-xs mt-2">${data.stderr.replace(/\n/g, '<br>')}</div>`;
+            } catch (e) {
+                history.innerHTML += `<div class="text-red-500 mt-2">> LỖI: CẦU NỐI LOCAL CHƯA BẬT (python vaps_bridge.py)</div>`;
+            }
+            history.scrollTop = history.scrollHeight;
+        };
+
+        // --- CRAWLER TOOL ---
+        window.startScan = async () => {
+            const url = document.getElementById('scanUrlInput').value;
+            const status = document.getElementById('scan-status');
+            const grid = document.getElementById('scan-result-grid');
+            if(!url) return;
+
+            status.innerHTML = `<i class="fas fa-spinner fa-spin text-pink-500 text-4xl mb-4"></i><p>Đang bóc tách hình ảnh...</p>`;
+            grid.classList.add('hidden');
+
+            try {
+                const res = await fetch('http://localhost:5000/api/scan', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url: url })
+                });
+                const data = await res.json();
+                status.classList.add('hidden');
+                grid.classList.remove('hidden');
+                grid.innerHTML = data.images.map(img => `
+                    <div class="bg-slate-900 rounded-xl overflow-hidden border border-slate-800 relative group aspect-square">
+                        <img src="${img}" class="w-full h-full object-cover">
+                        <div class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                            <button onclick="window.copyToClipboard('${img}')" class="bg-pink-600 text-white px-3 py-1 rounded-lg text-[10px] font-black uppercase">Copy</button>
+                        </div>
+                    </div>`).join('');
+            } catch (e) {
+                status.innerHTML = `<p class="text-red-500">LỖI KẾT NỐI TOOL CRAWLER (python app.py)</p>`;
+            }
+        };
+
+    </script>
+</body>
+</html>
